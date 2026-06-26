@@ -13,7 +13,10 @@ import joblib                # загрузка обученной модели 
 import pandas as pd          # модель ждёт на вход pandas DataFrame
 from fastapi import FastAPI, Request
 
-from app.schemas.predict import PredictRequest, PredictResponse
+
+import gradio as gr
+
+from app.schemas.predict import BR_STATES, PredictRequest, PredictResponse
 
 MODEL_PATH = Path("models/model.pkl")
 
@@ -100,3 +103,68 @@ def predict(req: PredictRequest, request: Request) -> PredictResponse:
     гарантирует, что и ответ будет ровно оговорённой формы.
     """
     return _score(req)
+
+def _build_gradio_demo() -> gr.Blocks:
+    """Собрать веб-форму для оценки заказа человеком.
+
+    Возвращает объект gr.Blocks — готовую страницу, которую мы смонтируем внутрь
+    FastAPI на адрес /. Внутри: семь полей заказа слева, результат справа, кнопка
+    и примеры. Предсказание считает тот же _score, что и REST-эндпоинт /predict.
+    """
+    states = sorted(BR_STATES)   # отсортированный список штатов для выпадающего меню
+
+    def predict_ui(price, freight, installments, n_items, state, lead_time, month):
+        """Обработчик кнопки: значения из формы → PredictRequest → оценка → подпись для gr.Label."""
+        # Gradio отдаёт числа как float; счётные поля приводим к int
+        req = PredictRequest(
+            price=price, freight=freight, installments=int(installments),
+            n_items=int(n_items), customer_state=state,
+            promised_lead_time_days=int(lead_time), purchase_month=int(month),
+        )
+        res = _score(req)
+        label = "Высокий риск негатива" if res.is_high_risk else "Скорее доволен"
+        # gr.Label рисует распределение {подпись: доля}; вторая строка — остаток до 1
+        return {label: res.negative_review_probability,
+                "—": 1 - res.negative_review_probability}
+
+    # gr.Blocks — «холст» интерфейса: всё, что объявлено внутри with, попадёт на страницу
+    with gr.Blocks(title="Риск негативного отзыва") as demo:
+        gr.Markdown(
+            "# 📦 Риск негативного отзыва\n"
+            "По параметрам заказа модель оценивает вероятность оценки 1-2 звезды."
+        )
+        with gr.Row():                       # одна строка из двух колонок
+            with gr.Column(scale=2):         # левая (шире) — поля ввода
+                price = gr.Number(label="Сумма товаров, R$", value=120.0)
+                freight = gr.Number(label="Доставка, R$", value=20.0)
+                installments = gr.Number(label="Платежей по рассрочке", value=1)
+                n_items = gr.Number(label="Позиций в заказе", value=1)
+                # Dropdown с фиксированным списком — несуществующий штат руками не ввести
+                state = gr.Dropdown(choices=states, label="Штат покупателя", value="SP")
+                lead_time = gr.Number(label="Обещанный срок доставки, дней", value=15)
+                month = gr.Number(label="Месяц заказа (1-12)", value=6)
+                submit = gr.Button("Оценить риск", variant="primary")
+            with gr.Column(scale=1):         # правая (уже) — результат
+                output = gr.Label(label="Вероятность негативного отзыва")
+        # Готовые наборы значений: клик по строке заполняет всю форму разом
+        gr.Examples(
+            examples=[
+                [49.9, 7.8, 1, 1, "SP", 12, 5],
+                [180.0, 45.0, 6, 2, "BA", 45, 1],
+                [29.9, 23.5, 1, 1, "AM", 60, 11],
+            ],
+            inputs=[price, freight, installments, n_items, state, lead_time, month],
+            label="Примеры заказов (клик заполняет форму)",
+        )
+        # Связываем кнопку с обработчиком: значения inputs → predict_ui → outputs
+        submit.click(
+            fn=predict_ui,
+            inputs=[price, freight, installments, n_items, state, lead_time, month],
+            outputs=output,
+        )
+    return demo
+
+
+# mount_gradio_app встраивает форму в существующий FastAPI на адрес / и ВОЗВРАЩАЕТ
+# новый app — поэтому присваиваем обратно, иначе uvicorn не подхватит форму.
+app = gr.mount_gradio_app(app, _build_gradio_demo(), path="/")
