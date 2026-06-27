@@ -1,0 +1,8 @@
+services:
+  api:                                  # имя сервиса; если бы добавляли БД, тут была бы вторая запись db:
+    build: .                            # собирать из Dockerfile в текущей папке
+    image: marketplace-satisfaction:latest   # имя собранного образа
+    container_name: marketplace-satisfaction  # фиксированное имя контейнера, удобно для docker logs/stop
+    ports:
+      - "8000:8000"                     # слева — порт ноутбука, справа — порт контейнера. Кавычки обязательны
+    restart: unless-stopped             # если контейнер упал — Docker сам перезапустит
