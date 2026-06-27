@@ -1,0 +1,15 @@
+.venv
+.git
+.github
+__pycache__
+*.pyc
+.pytest_cache
+data
+notebooks
+tests
+deploy_key
+deploy_key.pub
+.env
+README.md
+docker-compose.yml
+.DS_Store
