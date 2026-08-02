@@ -39,5 +39,5 @@ jobs:
             echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u forest1337gurov --password-stdin
             docker pull ${{ env.IMAGE }}:latest
             docker rm -f marketplace-satisfaction 2>/dev/null || true
-            docker run -d --name marketplace-satisfaction --restart unless-stopped -p 80:8000 ${{ env.IMAGE }}:latest
+            docker run -d --name marketplace-satisfaction --restart unless-stopped -p 127.0.0.1:8000:8000 ${{ env.IMAGE }}:latest
             docker logout ghcr.io
