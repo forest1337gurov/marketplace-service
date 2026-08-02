@@ -1,0 +1,49 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]           # деплоим на каждый push в main
+
+env:
+  # Адрес образа в реестре GHCR. ${{ github.repository_owner }} — ваш ник, подставится сам
+  IMAGE: ghcr.io/${{ github.repository_owner }}/marketplace-service
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR              # авторизация в реестре образов по токену из секретов
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_TOKEN }}
+
+      - name: Build and push image        # собрать образ и залить в реестр под двумя тегами
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ github.sha }}   # тег с хешем коммита — точная версия
+            ${{ env.IMAGE }}:latest              # и подвижный latest
+
+      - name: Deploy to server            # зайти на сервер по SSH и перезапустить контейнер
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}      # host/user/ключ — всё из секретов, в коде их нет
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |                              # команды ниже выполняются НА сервере:
+            # залогиниться в реестр, чтобы стянуть приватный образ
+            echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            docker pull ${{ env.IMAGE }}:latest                          # стянуть свежий образ
+            docker rm -f marketplace-satisfaction 2>/dev/null || true    # снести старый контейнер, если был
+            docker run -d \                                              # поднять новый в фоне
+              --name marketplace-satisfaction \
+              --restart unless-stopped \
+              -p 80:8000 \
+              ${{ env.IMAGE }}:latest
+            docker logout ghcr.io
