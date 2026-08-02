@@ -27,8 +27,8 @@ jobs:
           context: .
           push: true
           tags: |
-            ${{ env.IMAGE }}:${{ github.sha }}   # тег с хешем коммита — точная версия
-            ${{ env.IMAGE }}:latest              # и подвижный latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.IMAGE }}:latest              
 
       - name: Deploy to server            # зайти на сервер по SSH и перезапустить контейнер
         uses: appleboy/ssh-action@v1.0.3
@@ -39,9 +39,9 @@ jobs:
           script: |                              # команды ниже выполняются НА сервере:
             # залогиниться в реестр, чтобы стянуть приватный образ
             echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-            docker pull ${{ env.IMAGE }}:latest                          # стянуть свежий образ
-            docker rm -f marketplace-satisfaction 2>/dev/null || true    # снести старый контейнер, если был
-            docker run -d \                                              # поднять новый в фоне
+            docker pull ${{ env.IMAGE }}:latest                          
+            docker rm -f marketplace-satisfaction 2>/dev/null || true    
+            docker run -d \                                              
               --name marketplace-satisfaction \
               --restart unless-stopped \
               -p 80:8000 \
